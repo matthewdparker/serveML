@@ -27,7 +27,10 @@ def sync_product_keys():
     next_product_key = max(models.keys()+[1])
 
 
-def save(product_key, model, args_test):
+def save_product(product_key, model, args_test):
+    """
+    Save a product's model and args_test to disk
+    """
     sync_product_keys()
 
     model_fp = save_dir + '{}_model.pkl'.format(product_key)
@@ -93,7 +96,7 @@ def add_product():
     args_tests[next_product_key] = dill.loads(data['args_test'])
 
     sync_product_keys()
-    save()
+    save_product()
 
     return jsonify({'new_product_key' : new_product_key})
 
