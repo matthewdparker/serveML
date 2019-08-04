@@ -11,35 +11,20 @@ logger = logging.getLogger(__name__)
 # Initialize values and create the Flask app
 save_dir = '' # Directory models and args_tests from products will be saved to
 next_product_key = 1
-models = {}
-args_tests = {}
+products = {}
 load_from_dir = True
 app = Flask(__name__)
 
 
-def sync_product_keys():
+def save_product(product, product_key):
     """
-    Checks to make sure keys for models and args_tests dicts are kept in sync
+    Save a product to disk
     """
-    if set(models.keys()) != set(args_tests.keys()):
-        raise RuntimeError("Product keys for models and args_tests are mis-matched; there exist product keys for models which are not product keys for args tests, or vice versa")
+    product_fp = save_dir + '{}_product.pkl'.format(product_key)
 
-    next_product_key = max(models.keys()+[1])
-
-
-def save_product(product_key, model, args_test):
-    """
-    Save a product's model and args_test to disk
-    """
-    sync_product_keys()
-
-    model_fp = save_dir + '{}_model.pkl'.format(product_key)
-    args_test_fp = save_dir + '{}_argstest.pkl'.format(product_key)
-
-    for (obj, fp) in [(model, model_fp), (args_test, args_test_fp)]:
-        if not isfile(fp):
-            with open(fp, 'w') as f:
-                dill.dump(obj, f)
+    if not isfile(product_fp):
+        with open(product_fp, 'w') as f:
+            dill.dump(products[product_key], f)
 
 
 @app.before_first_request
@@ -50,15 +35,9 @@ def load_products():
     files = [f for f in listdir(save_dir) if isfile(join(save_dir, f))]
 
     for f in files:
-        if f[-9:] == 'model.pkl':
+        if f[-11:] == 'product.pkl':
             with open(f, 'r') as f_:
-                models[int(f.split('_')[0])] = dill.load(f_)
-
-        elif f[-12:] == 'argstest.pkl':
-            with open(f, 'r') as f_:
-                args_tests[int(f.split('_')[0])] = dill.load(f_)
-
-    sync_product_keys()
+                products[int(f.split('_')[0])] = dill.load(f_)
 
 
 @app.route('/<product_key>', methods=['POST'])
@@ -68,7 +47,8 @@ def serve_request(product_key):
 
     :param product_key: integer identifying which model and args_test to use
     """
-    model, args_test = models[product_key], args_tests[product_key]
+    model = products[product_key]['model']
+    args_test = products[product_key]['args_test']
 
     if args_test(**request.json):
         return model.infer(**request.json)
@@ -89,14 +69,13 @@ def add_product():
 
     Note: args_test should support keyword-args only.
     """
-    sync_product_keys()
-
     data = request.json
-    models[next_product_key] = dill.loads(data['model'])
-    args_tests[next_product_key] = dill.loads(data['args_test'])
+    new_product = {'model' : dill.loads(data['model']),
+                   'args_test' : dill.loads(data['args_test'])}
 
-    sync_product_keys()
-    save_product()
+    # Save new product to memory and disk
+    products[new_product_key] = new_product
+    save_product(new_product_key, new_product)
 
     return jsonify({'new_product_key' : new_product_key})
 
@@ -106,21 +85,14 @@ def remove_product(product_key):
     """
     Remove a product from the API. Deletes from both memory and disk.
     """
-    sync_product_keys()
-
-    if product_key not in models.keys():
+    if product_key not in products.keys():
         abort(400)
 
     else:
-        # Delete model and args_test from memory
-        del models[product_key]
-        del args_tests[product_key]
+        # Delete product from memory and disk
+        del products[product_key]
+        remove(save_dir + '{}_product.pkl'.format(product_key))
 
-        # Delete model and args_test from disk
-        remove(save_dir + '{}_model.pkl'.format(product_key))
-        remove(save_dir + '{}_argstest.pkl'.format(product_key))
-
-        sync_product_keys()
         return jsonify({'deleted_product_key' : product_key})
 
 
