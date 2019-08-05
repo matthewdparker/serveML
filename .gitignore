@@ -102,3 +102,9 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# Virtual environments for testing
+serveML/
+
+# Any .pkl files in products directory
+products/*.pkl
